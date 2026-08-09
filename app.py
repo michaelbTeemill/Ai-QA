@@ -1,20 +1,19 @@
 import io
 import os
 import json
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import streamlit as st
+import libsql_client
 from PIL import Image, ImageOps
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics.pairwise import cosine_similarity
 
 APP_DIR = Path(__file__).resolve().parent
-DB_PATH = APP_DIR / "tqi_trial.db"
 IMAGE_DIR = APP_DIR / "images"
 IMAGE_DIR.mkdir(exist_ok=True)
 
@@ -22,7 +21,10 @@ st.set_page_config(page_title="Teemill Quality Intelligence Trial", layout="wide
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH)
+    url = st.secrets["TURSO_DATABASE_URL"]
+    token = st.secrets["TURSO_AUTH_TOKEN"]
+    conn = libsql_client.connect(url=url, auth_token=token)
+    
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS inspections (
@@ -47,7 +49,6 @@ def db():
         )
         """
     )
-    conn.commit()
     return conn
 
 
@@ -86,12 +87,24 @@ def save_image(uploaded_file) -> tuple[str, Image.Image]:
 
 def load_data() -> pd.DataFrame:
     conn = db()
-    df = pd.read_sql_query("SELECT * FROM inspections ORDER BY id DESC", conn)
+    result = conn.execute("SELECT * FROM inspections ORDER BY id DESC")
+    rows = result.rows
+    columns = result.columns
     conn.close()
-    return df
+    
+    if not rows:
+        return pd.DataFrame(columns=[
+            "id", "created_at", "image_path", "order_id", "sku", "garment_colour",
+            "printer_id", "operator", "shift", "print_profile", "defect_type",
+            "severity", "decision", "root_cause", "corrective_action", "notes",
+            "feature_json", "verified"
+        ])
+    return pd.DataFrame(rows, columns=columns)
 
 
 def train_models(df: pd.DataFrame):
+    if df.empty:
+        return None
     verified = df[df["verified"] == 1].copy()
     if len(verified) < 8:
         return None
@@ -215,7 +228,7 @@ if page == "Add training example":
                     corrective_action, notes, json.dumps(feat.tolist())
                 )
             )
-            conn.commit(); conn.close()
+            conn.close()
             st.success("Example saved and added to the learning dataset.")
             st.rerun()
 
@@ -289,7 +302,7 @@ elif page == "Check a print":
                  final_defect, final_severity, final_decision, final_root, action, notes,
                  json.dumps(feat.tolist()))
             )
-            conn.commit(); conn.close()
+            conn.close()
             st.success("Decision confirmed and used as a new training example.")
             st.rerun()
 
@@ -324,11 +337,10 @@ elif page == "Data export":
         st.download_button("Download inspection data CSV", csv, "tqi_inspections.csv", "text/csv")
         st.dataframe(df.drop(columns=["feature_json"]), use_container_width=True)
 
-    st.warning("Reset permanently deletes the local trial database and stored images.")
+    st.warning("Reset clears stored images.")
     confirm = st.checkbox("I understand")
     if st.button("Reset all trial data", disabled=not confirm):
-        if DB_PATH.exists(): DB_PATH.unlink()
         for p in IMAGE_DIR.glob("*"):
             p.unlink()
-        st.success("Trial data reset.")
+        st.success("Local images cleared.")
         st.rerun()

@@ -351,6 +351,3 @@ elif page == "Data export":
             p.unlink()
         st.success("Local images cleared.")
         st.rerun()
-            p.unlink()
-        st.success("Local images cleared.")
-        st.rerun()

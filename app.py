@@ -23,6 +23,13 @@ st.set_page_config(page_title="Teemill Quality Intelligence Trial", layout="wide
 def db():
     url = st.secrets["TURSO_DATABASE_URL"]
     token = st.secrets["TURSO_AUTH_TOKEN"]
+    
+    # Force HTTPS to bypass Streamlit Cloud WebSocket blocks
+    if url.startswith("libsql://"):
+        url = url.replace("libsql://", "https://")
+    elif url.startswith("wss://"):
+        url = url.replace("wss://", "https://")
+        
     conn = libsql_client.create_client_sync(url=url, auth_token=token)
     
     conn.execute(
@@ -341,6 +348,9 @@ elif page == "Data export":
     confirm = st.checkbox("I understand")
     if st.button("Reset all trial data", disabled=not confirm):
         for p in IMAGE_DIR.glob("*"):
+            p.unlink()
+        st.success("Local images cleared.")
+        st.rerun()
             p.unlink()
         st.success("Local images cleared.")
         st.rerun()

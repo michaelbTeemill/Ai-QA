@@ -23,7 +23,7 @@ st.set_page_config(page_title="Teemill Quality Intelligence Trial", layout="wide
 def db():
     url = st.secrets["TURSO_DATABASE_URL"]
     token = st.secrets["TURSO_AUTH_TOKEN"]
-    conn = libsql_client.connect(url=url, auth_token=token)
+    conn = libsql_client.create_client_sync(url=url, auth_token=token)
     
     conn.execute(
         """
